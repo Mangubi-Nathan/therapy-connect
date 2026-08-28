@@ -196,3 +196,11 @@ label {
 .video-btn:hover {
   background: #2563eb;
 }
+
+.danger-btn {
+  background: #ef4444;
+  color: white;
+}
+.danger-btn:hover {
+  background: #dc2626;
+}

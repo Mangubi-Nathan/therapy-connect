@@ -153,6 +153,59 @@ app.get('/api/patient/appointments', requireRole('patient'), (req, res) => {
   } catch { res.status(500).json({ error: 'Failed to fetch appointments' }); }
 });
 
+app.delete('/api/appointments/:id', requireRole('patient'), (req, res) => {
+  const patientId = req.session.userId;
+  const appointmentId = req.params.id;
+
+  try {
+    const slot = db.prepare('SELECT * FROM availability WHERE id = ? AND patient_id = ? AND is_booked = 1')
+      .get(appointmentId, patientId);
+    if (!slot) return res.status(404).json({ error: 'Appointment not found or already cancelled' });
+
+    db.prepare('UPDATE availability SET is_booked = 0, patient_id = NULL WHERE id = ?')
+      .run(appointmentId);
+    res.json({ message: 'Appointment cancelled' });
+  } catch { res.status(500).json({ error: 'Failed to cancel appointment' }); }
+});
+
+app.delete('/api/slots/:id', requireRole('doctor'), (req, res) => {
+  const doctorId = req.session.userId;
+  const slotId = req.params.id;
+
+  try {
+    const slot = db.prepare('SELECT * FROM availability WHERE id = ? AND doctor_id = ? AND is_booked = 0')
+      .get(slotId, doctorId);
+    if (!slot) return res.status(404).json({ error: 'Slot not found, already booked, or not yours' });
+
+    db.prepare('DELETE FROM availability WHERE id = ?').run(slotId);
+    res.json({ message: 'Slot deleted' });
+  } catch { res.status(500).json({ error: 'Failed to delete slot' }); }
+});
+
+app.delete('/api/doctor/appointments/:id', requireRole('doctor'), (req, res) => {
+  const doctorId = req.session.userId;
+  const appointmentId = req.params.id;
+
+  try {
+    const slot = db.prepare('SELECT * FROM availability WHERE id = ? AND doctor_id = ? AND is_booked = 1')
+      .get(appointmentId, doctorId);
+    if (!slot) return res.status(404).json({ error: 'Appointment not found or not yours' });
+
+    db.prepare('UPDATE availability SET is_booked = 0, patient_id = NULL WHERE id = ?')
+      .run(appointmentId);
+    res.json({ message: 'Appointment cancelled' });
+  } catch { res.status(500).json({ error: 'Failed to cancel appointment' }); }
+});
+
+app.delete('/api/account', requireLogin, (req, res) => {
+  const userId = req.session.userId;
+  try {
+    db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+    req.session.destroy();
+    res.json({ message: 'Account deleted' });
+  } catch { res.status(500).json({ error: 'Failed to delete account' }); }
+});
+
 // ---------- Catch-all (SPA) ----------
 app.use((req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

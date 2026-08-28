@@ -107,6 +107,7 @@ function renderDashboard() {
   const isDoctor = currentUser.role === 'doctor';
   app.innerHTML = `
     <button class="logout-btn" onclick="logout()">Logout</button>
+    <button class="danger-btn" onclick="deleteAccount()" style="position:absolute; top:70px; right:20px;">Delete Account</button>
     <h1>Welcome, ${currentUser.name}</h1>
     <p>Role: ${isDoctor ? 'Doctor' : 'Patient'}</p>
     <div id="dashboard-content">
@@ -119,6 +120,17 @@ function renderDashboard() {
   } else {
     loadDoctors();
     loadMyAppointments();
+  }
+}
+async function deleteAccount() {
+  if (!confirm('This will permanently delete your account and all appointments. Continue?')) return;
+  try {
+    await api('/api/account', 'DELETE');
+    showMessage('Account deleted');
+    currentUser = null;
+    renderAuth();
+  } catch (err) {
+    showMessage(err.message, 'error');
   }
 }
 
@@ -203,6 +215,32 @@ async function loadDoctorSchedule() {
         </div>
       `;
     }).join('');
+    container.innerHTML = slots.map(slot => {
+  let actions = '';
+  if (slot.is_booked && slot.patient_name) {
+    const phone = slot.patient_phone || '';
+    actions = `
+      <div>
+        <a href="tel:${phone}" class="call-btn">📞 Call</a>
+        <button class="video-btn" onclick="startVideoCall()">🎥 Video</button>
+        <button class="danger-btn" onclick="cancelAppointmentByDoctor(${slot.id})">❌ Cancel</button>
+      </div>
+    `;
+  } else if (!slot.is_booked) {
+    actions = `
+      <div>
+        <button class="danger-btn" onclick="deleteSlot(${slot.id})">🗑️ Delete</button>
+      </div>
+    `;
+  }
+  return `
+    <div class="slot ${slot.is_booked ? 'booked' : ''}">
+      <span>${slot.date} at ${slot.time}</span>
+      <span>${slot.is_booked ? `Booked by ${slot.patient_name}` : 'Available'}</span>
+      ${actions}
+    </div>
+  `;
+}).join('');
   } catch (err) {
     showMessage(err.message, 'error');
   }
@@ -231,6 +269,27 @@ async function loadDoctors() {
         <div id="availability-${doc.id}"></div>
       </div>
     `).join('');
+  } catch (err) {
+    showMessage(err.message, 'error');
+  }
+}
+async function deleteSlot(slotId) {
+  if (!confirm('Delete this available slot?')) return;
+  try {
+    await api(`/api/slots/${slotId}`, 'DELETE');
+    showMessage('Slot deleted');
+    loadDoctorSchedule();
+  } catch (err) {
+    showMessage(err.message, 'error');
+  }
+}
+
+async function cancelAppointmentByDoctor(appointmentId) {
+  if (!confirm('Cancel this booked appointment?')) return;
+  try {
+    await api(`/api/doctor/appointments/${appointmentId}`, 'DELETE');
+    showMessage('Appointment cancelled');
+    loadDoctorSchedule();
   } catch (err) {
     showMessage(err.message, 'error');
   }
@@ -291,6 +350,28 @@ async function loadMyAppointments() {
         </div>
       </div>
     `).join('');
+    container.innerHTML = appointments.map(appt => `
+  <div class="slot booked">
+    <span>${appt.date} at ${appt.time} with Dr. ${appt.doctor_name}</span>
+    <span>Contact: ${appt.doctor_email} / ${appt.doctor_phone || 'N/A'}</span>
+    <div>
+      <a href="tel:${appt.doctor_phone}" class="call-btn">📞 Call</a>
+      <button class="video-btn" onclick="startVideoCall()">🎥 Video</button>
+      <button class="danger-btn" onclick="cancelAppointment(${appt.id})">❌ Cancel</button>
+    </div>
+  </div>
+`).join('');
+  } catch (err) {
+    showMessage(err.message, 'error');
+  }
+}
+async function cancelAppointment(appointmentId) {
+  if (!confirm('Are you sure you want to cancel this appointment?')) return;
+  try {
+    await api(`/api/appointments/${appointmentId}`, 'DELETE');
+    showMessage('Appointment cancelled');
+    loadMyAppointments();
+    loadDoctors(); // refresh available slots
   } catch (err) {
     showMessage(err.message, 'error');
   }
