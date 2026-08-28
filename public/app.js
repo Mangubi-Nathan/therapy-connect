@@ -166,10 +166,20 @@ function renderPatientDashboard() {
 }
 
 // ---------- Video Call Helper ----------
-function startVideoCall() {
+function startVideoCall(recipientEmail) {
+  // Open Google Meet in a new tab
   window.open('https://meet.google.com/new', '_blank');
-}
 
+  // Open email client with recipient, subject, and body containing the Meet link
+  const subject = encodeURIComponent('Video Call Invitation');
+  const body = encodeURIComponent(
+    'Join my Google Meet call:\nhttps://meet.google.com/new'
+  );
+  window.open(
+    `mailto:${recipientEmail}?subject=${subject}&body=${body}`,
+    '_blank'
+  );
+}
 // ---------- Doctor Functions ----------
 async function addSlot() {
   const date = document.getElementById('slot-date').value;
@@ -263,7 +273,7 @@ async function loadDoctors() {
         <p>Phone: ${doc.phone || 'Not provided'}</p>
         <div>
           <a href="tel:${doc.phone}" class="call-btn">📞 Call</a>
-          <button class="video-btn" onclick="startVideoCall()">🎥 Video</button>
+          <button class="video-btn" onclick="startVideoCall('${doc.email}')">🎥 Video</button>
         </div>
         <button onclick="showAvailability(${doc.id}, '${doc.name}')">View Availability</button>
         <div id="availability-${doc.id}"></div>
@@ -346,7 +356,7 @@ async function loadMyAppointments() {
         <span>Contact: ${appt.doctor_email} / ${appt.doctor_phone || 'N/A'}</span>
         <div>
           <a href="tel:${appt.doctor_phone}" class="call-btn">📞 Call</a>
-          <button class="video-btn" onclick="startVideoCall()">🎥 Video</button>
+          <button class="video-btn" onclick="startVideoCall('${appt.doctor_email}')">🎥 Video</button>
         </div>
       </div>
     `).join('');
