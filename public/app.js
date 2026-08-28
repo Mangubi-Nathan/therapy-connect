@@ -64,6 +64,9 @@ function showSignup() {
       <option value="patient">Patient</option>
       <option value="doctor">Doctor</option>
     </select>
+    <!-- NEW: Unique Code field -->
+    <label>Unique Code (Doctor codes start with 'Doc', Patient codes with 'Pt')</label>
+    <input type="text" id="signup-code" placeholder="e.g. Doc123 or Pt456">
     <input type="text" id="signup-name" placeholder="Full Name">
     <input type="email" id="signup-email" placeholder="Email">
     <input type="tel" id="signup-phone" placeholder="Phone Number">
@@ -87,12 +90,13 @@ async function login() {
 
 async function signup() {
   const role = document.getElementById('signup-role').value;
+  const code = document.getElementById('signup-code').value;   // NEW
   const name = document.getElementById('signup-name').value;
   const email = document.getElementById('signup-email').value;
   const phone = document.getElementById('signup-phone').value;
   const password = document.getElementById('signup-password').value;
   try {
-    const user = await api('/api/signup', 'POST', { role, name, email, phone, password });
+    const user = await api('/api/signup', 'POST', { role, code, name, email, phone, password });
     currentUser = user;
     renderDashboard();
   } catch (err) {

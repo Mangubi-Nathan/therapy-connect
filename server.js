@@ -33,9 +33,20 @@ function requireRole(role) {
 
 // ---------- Auth Routes ----------
 app.post('/api/signup', (req, res) => {
-  const { role, name, email, phone, password } = req.body;
+  const { role, code, name, email, phone, password } = req.body;
+
+  // Validate role
   if (!role || !['patient', 'doctor'].includes(role))
     return res.status(400).json({ error: 'Invalid role' });
+
+  // 🔐 Validate unique code based on role
+  if (role === 'doctor' && !code.startsWith('Doc')) {
+    return res.status(400).json({ error: 'Doctor code must start with "Doc"' });
+  }
+  if (role === 'patient' && !code.startsWith('Pt')) {
+    return res.status(400).json({ error: 'Patient code must start with "Pt"' });
+  }
+
   if (!name || !email || !password)
     return res.status(400).json({ error: 'Name, email and password required' });
 
