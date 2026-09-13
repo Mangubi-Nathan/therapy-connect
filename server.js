@@ -217,6 +217,16 @@ app.delete('/api/account', requireLogin, (req, res) => {
   } catch { res.status(500).json({ error: 'Failed to delete account' }); }
 });
 
+// Public therapist names (used on landing page — no login required)
+app.get('/api/public/therapists', (req, res) => {
+  try {
+    const doctors = db.prepare('SELECT name FROM users WHERE role = ?').all('doctor');
+    res.json(doctors);
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch therapists' });
+  }
+});
+
 // ---------- Catch-all (SPA) ----------
 app.use((req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
