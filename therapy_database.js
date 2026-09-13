@@ -26,7 +26,6 @@ db.exec(`
     UNIQUE(doctor_id, date, time)
   );
 
-  -- NEW: therapist ↔ patient assignments (one active therapist per patient)
   CREATE TABLE IF NOT EXISTS assignments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     doctor_id INTEGER NOT NULL,
@@ -36,80 +35,63 @@ db.exec(`
     FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
-  -- NEW: chat messages
   CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sender_id INTEGER NOT NULL,
     receiver_id INTEGER NOT NULL,
-    body TEXT NOT NULL,
+    body TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_read INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS activity_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    details TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
 `);
 
-// ---------------------- Helpers ----------------------
+// ---- Migrations (safe for existing databases) ----
+function ensureColumn(table, column, definition) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some(c => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+ensureColumn('users', 'profile_pic', 'TEXT');
+ensureColumn('users', 'bio', 'TEXT');
+ensureColumn('messages', 'attachment', 'TEXT');
+ensureColumn('messages', 'attachment_type', 'TEXT');
+ensureColumn('messages', 'attachment_name', 'TEXT');
+ensureColumn('assignments', 'video_room', 'TEXT');
+
+// ---- Helpers ----
 const findUserByEmail = (email) => db.prepare('SELECT * FROM users WHERE email = ?').get(email);
 const findUserById = (id) => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
 
 const createUser = (role, name, email, phone, password) => {
   const password_hash = bcrypt.hashSync(password, 10);
-  const stmt = db.prepare(
-    'INSERT INTO users (role, name, email, phone, password_hash) VALUES (?, ?, ?, ?, ?)'
-  );
   try {
-    const info = stmt.run(role, name, email, phone, password_hash);
+    const info = db.prepare(
+      'INSERT INTO users (role, name, email, phone, password_hash) VALUES (?, ?, ?, ?, ?)'
+    ).run(role, name, email, phone, password_hash);
     return info.lastInsertRowid;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 };
 
-const verifyPassword = (password, hash) => {
-  if (!hash) return false;
-  return bcrypt.compareSync(password, hash);
-};
+const verifyPassword = (password, hash) => hash ? bcrypt.compareSync(password, hash) : false;
 
 const authenticateUser = (email, password) => {
   const user = findUserByEmail(email);
-  if (!user) return null;
-  return verifyPassword(password, user.password_hash) ? user : null;
-};
-
-const addAvailability = (doctorId, date, time) => {
-  const doctor = findUserById(doctorId);
-  if (!doctor || doctor.role !== 'doctor') return null;
-  try {
-    const info = db.prepare(
-      'INSERT INTO availability (doctor_id, date, time) VALUES (?, ?, ?)'
-    ).run(doctorId, date, time);
-    return info.lastInsertRowid;
-  } catch {
-    return null;
-  }
-};
-
-const listAvailability = (doctorId) =>
-  db.prepare('SELECT * FROM availability WHERE doctor_id = ? AND is_booked = 0').all(doctorId);
-
-const bookSlot = (availabilityId, patientId) => {
-  const patient = findUserById(patientId);
-  if (!patient || patient.role !== 'patient') return false;
-  const info = db.prepare(
-    'UPDATE availability SET is_booked = 1, patient_id = ? WHERE id = ? AND is_booked = 0'
-  ).run(patientId, availabilityId);
-  return info.changes > 0;
+  return user && verifyPassword(password, user.password_hash) ? user : null;
 };
 
 module.exports = {
-  db,
-  findUserByEmail,
-  findUserById,
-  createUser,
-  verifyPassword,
-  authenticateUser,
-  addAvailability,
-  listAvailability,
-  bookSlot
+  db, findUserByEmail, findUserById,
+  createUser, verifyPassword, authenticateUser
 };
