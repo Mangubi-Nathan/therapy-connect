@@ -1,11 +1,9 @@
 const Database = require('better-sqlite3');
 const bcrypt = require('bcrypt');
 
-// Initialize database
 const db = new Database('therapy.db');
 db.pragma('foreign_keys = ON');
 
-// Create tables if they don't exist
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,17 +25,33 @@ db.exec(`
     FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE SET NULL,
     UNIQUE(doctor_id, date, time)
   );
+
+  -- NEW: therapist ↔ patient assignments (one active therapist per patient)
+  CREATE TABLE IF NOT EXISTS assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    doctor_id INTEGER NOT NULL,
+    patient_id INTEGER NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (doctor_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  -- NEW: chat messages
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_id INTEGER NOT NULL,
+    receiver_id INTEGER NOT NULL,
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_read INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE
+  );
 `);
 
 // ---------------------- Helpers ----------------------
-
-const findUserByEmail = (email) => {
-  return db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-};
-
-const findUserById = (id) => {
-  return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
-};
+const findUserByEmail = (email) => db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+const findUserById = (id) => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
 
 const createUser = (role, name, email, phone, password) => {
   const password_hash = bcrypt.hashSync(password, 10);
@@ -47,7 +61,7 @@ const createUser = (role, name, email, phone, password) => {
   try {
     const info = stmt.run(role, name, email, phone, password_hash);
     return info.lastInsertRowid;
-  } catch (err) {
+  } catch {
     return null;
   }
 };
@@ -66,38 +80,28 @@ const authenticateUser = (email, password) => {
 const addAvailability = (doctorId, date, time) => {
   const doctor = findUserById(doctorId);
   if (!doctor || doctor.role !== 'doctor') return null;
-
-  const stmt = db.prepare(
-    'INSERT INTO availability (doctor_id, date, time) VALUES (?, ?, ?)'
-  );
   try {
-    const info = stmt.run(doctorId, date, time);
+    const info = db.prepare(
+      'INSERT INTO availability (doctor_id, date, time) VALUES (?, ?, ?)'
+    ).run(doctorId, date, time);
     return info.lastInsertRowid;
-  } catch (err) {
+  } catch {
     return null;
   }
 };
 
-const listAvailability = (doctorId) => {
-  return db.prepare(
-    'SELECT * FROM availability WHERE doctor_id = ? AND is_booked = 0'
-  ).all(doctorId);
-};
+const listAvailability = (doctorId) =>
+  db.prepare('SELECT * FROM availability WHERE doctor_id = ? AND is_booked = 0').all(doctorId);
 
 const bookSlot = (availabilityId, patientId) => {
   const patient = findUserById(patientId);
   if (!patient || patient.role !== 'patient') return false;
-
-  const stmt = db.prepare(`
-    UPDATE availability
-    SET is_booked = 1, patient_id = ?
-    WHERE id = ? AND is_booked = 0
-  `);
-  const info = stmt.run(patientId, availabilityId);
+  const info = db.prepare(
+    'UPDATE availability SET is_booked = 1, patient_id = ? WHERE id = ? AND is_booked = 0'
+  ).run(patientId, availabilityId);
   return info.changes > 0;
 };
 
-// ---------------------- Exports ----------------------
 module.exports = {
   db,
   findUserByEmail,
@@ -109,14 +113,3 @@ module.exports = {
   listAvailability,
   bookSlot
 };
-
-// Self-test when run directly
-if (require.main === module) {
-  db.exec('DELETE FROM availability; DELETE FROM users;');
-  console.log('--- Creating users ---');
-  const doctorId = createUser('doctor', 'Dr. Jane Smith', 'jane@example.com', '555-1234', 'securepass123');
-  const patientId = createUser('patient', 'John Doe', 'john@example.com', '555-5678', 'mypassword');
-  console.log('Doctor ID:', doctorId, '| Patient ID:', patientId);
-  console.log('\n--- Database ready ---');
-  db.close();
-}
